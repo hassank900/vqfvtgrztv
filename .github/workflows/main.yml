@@ -4,25 +4,17 @@ on:
   workflow_dispatch:
     inputs:
       run_minutes:
-        description: 'Session lifetime in minutes (0 = until the runner cap)'
+        description: 'Session lifetime in minutes (0 = until the 5h50m job cap)'
         required: false
-        default: '30'
+        default: '45'
       vnc_port:
-        description: 'RFB port, loopback only'
+        description: 'VNC RFB port (loopback only, consumed by websockify)'
         required: false
         default: '5900'
-      novnc_port:
-        description: 'websockify bridge port, loopback only'
-        required: false
-        default: '6081'
       web_port:
-        description: 'relay console HTTP port, loopback only'
+        description: 'websockify + noVNC HTTP/WebSocket port (tunnel origin)'
         required: false
         default: '6080'
-      vnc_password:
-        description: 'RFB password (first 8 chars) and console access key'
-        required: false
-        default: 'Arena#25'
 
 concurrency:
   group: desktop-${{ github.repository }}-${{ github.ref }}
@@ -34,861 +26,202 @@ permissions:
 defaults:
   run:
     shell: pwsh
-    working-directory: 'C:\\'
+    working-directory: 'C:\'
 
 env:
-  TIGHTVNC_ROOT: 'C:\\Program Files\\TightVNC'
-  TIGHTVNC_MSI: 'https://www.tightvnc.com/download/2.8.85/tightvnc-2.8.85-gpl-setup-64bit.msi'
-  TIGHTVNC_MSI_SHA256: 'd8fbed7b27ebab86df6f780f6e86f723668f3715cee521ccaa4568812aef5f3e'
-  NOVNC_DIR: 'C:\\novnc'
-  CF_STAGED: 'C:\\cloudflared-amd64.exe'
-  CF_EXE: 'C:\\ProgramData\\cloudflared\\cloudflared.exe'
-  CF_LOG_WEB: 'C:\\cf_console.log'
-  CF_ERR_WEB: 'C:\\cf_console.err.log'
-  CF_LOG_NOVNC: 'C:\\cf_novnc.log'
-  CF_ERR_NOVNC: 'C:\\cf_novnc.err.log'
-  GUARD_LOG: 'C:\\vncguard.log'
-  CF_FLAGS_FILE: 'C:\\cf_flags.txt'
-  CF_TUNNEL_FLAGS: '--no-autoupdate --loglevel info'
-  RELAY_PY: 'C:\\relay.py'
-  RELAY_LOG: 'C:\\relay.log'
-  PROBE_PS: 'C:\\vncprobe.ps1'
-  URL_FILE: 'C:\\desktop_urls.txt'
-  KEEP_ALIVE: ${{ github.event.inputs.run_minutes || '30' }}
+  NOVNC_DIR: 'C:\novnc'
+  CF_STAGED: 'C:\cloudflared-amd64.exe'
+  CF_EXE: 'C:\ProgramData\cloudflared\cloudflared.exe'
+  CF_LOG_WEB: 'C:\cf_web.log'
+  CF_ERR_WEB: 'C:\cf_web.err.log'
+  CF_LOG_VNC: 'C:\cf_vnc.log'
+  CF_ERR_VNC: 'C:\cf_vnc.err.log'
+  WS_LOG: 'C:\websockify.log'
+  WS_ERR: 'C:\websockify.err.log'
+  GUARD_LOG: 'C:\vncguard.log'
+  URL_FILE: 'C:\desktop_urls.txt'
+  TIGHTVNC_ROOT: 'C:\Program Files\TightVNC'
+  PY_DEFAULT: 'C:\hostedtoolcache\windows\Python\3.12.10\x64\python.exe'
+  KEEP_ALIVE: ${{ github.event.inputs.run_minutes || '45' }}
   VNC_PORT: ${{ github.event.inputs.vnc_port || '5900' }}
-  VNC_APP_PORT: '5901'
-  NOVNC_PORT: ${{ github.event.inputs.novnc_port || '6081' }}
   WEB_PORT: ${{ github.event.inputs.web_port || '6080' }}
-  VNC_PASSWORD: ${{ github.event.inputs.vnc_password || 'Arena#25' }}
-  RELAY_B64: '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'
-  PROBE_B64: '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'
 
 jobs:
   desktop:
-    name: Windows Server 2025 interactive desktop over TightVNC, noVNC and quick tunnels
+    name: Windows Server 2025 interactive desktop over VNC + cloudflared
     runs-on: windows-latest
     timeout-minutes: 350
 
     steps:
-
-      - name: Preflight - harden the session assumptions and inventory the host
+      - name: Preflight - validated runner inventory
         run: |
           $ErrorActionPreference = 'Continue'
-          $ProgressPreference = 'SilentlyContinue'
+          Get-CimInstance Win32_OperatingSystem |
+            Select-Object Caption, Version, OSArchitecture, TotalVisibleMemorySize, FreePhysicalMemory |
+            Format-List
+          foreach ($p in @('C:\hostedtoolcache\windows\Python\3.12.10\x64\python.exe', 'C:\Program Files\TightVNC\tvnserver.exe', 'C:\ProgramData\chocolatey\bin\choco.exe')) {
+            $state = if (Test-Path -LiteralPath $p) { 'EXISTS ' } else { 'MISSING' }
+            Write-Host ('{0} {1}' -f $state, $p)
+          }
 
-          Write-Host ('HOST=' + $env:COMPUTERNAME + ' SESSION=' + (Get-Process -Id $PID).SessionId + ' USER=' + $env:USERNAME + ' PS=' + $PSVersionTable.PSVersion)
-          $identity = [Security.Principal.WindowsIdentity]::GetCurrent()
-          $principal = New-Object Security.Principal.WindowsPrincipal($identity)
-          Write-Host ('IDENTITY=' + $identity.Name + ' IS_SYSTEM=' + $identity.IsSystem + ' ADMIN=' + $principal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator))
-          $os = Get-CimInstance Win32_OperatingSystem
-          Write-Host ('OS=' + $os.Caption + ' BUILD=' + $os.Version + ' ARCH=' + $os.OSArchitecture)
-          Write-Host ('MEM_MB=' + [int]($os.TotalVisibleMemorySize / 1KB) + ' CPU=' + (Get-CimInstance Win32_ComputerSystem).NumberOfLogicalProcessors)
-          Write-Host ('IMAGE=' + $env:ImageOS + ' RUNNER_ID=' + $env:GITHUB_RUN_ID)
-          Write-Host '--- interactive session seams ---'
-          qwinsta
-          Get-Process -Name explorer, dwm, sihost, LogonUI -ErrorAction SilentlyContinue | Select-Object Name, Id, SessionId, StartTime | Sort-Object SessionId | Format-Table -AutoSize
-          Get-CimInstance Win32_LogonSession | Where-Object { $_.LogonType -in 2, 10 } | Select-Object LogonId, LogonType, StartTime | Format-Table -AutoSize
-          Write-Host '--- interpreter inventory ---'
-          $pyCandidates = @()
-          foreach ($dir in (Get-ChildItem 'C:\hostedtoolcache\windows\Python' -Directory -ErrorAction SilentlyContinue | Sort-Object { [version]($_.Name -replace '[^0-9.]', '') } -Descending)) {
-              $exe = Join-Path $dir.FullName 'x64\python.exe'
-              if (Test-Path -LiteralPath $exe) { $pyCandidates += $exe; Write-Host ('PY_EXISTS=' + $exe) }
-          }
-          foreach ($fixed in 'C:\Program Files\Python312\python.exe', 'C:\Program Files\Python311\python.exe') {
-              if (Test-Path -LiteralPath $fixed) { $pyCandidates += $fixed; Write-Host ('PY_EXISTS=' + $fixed) }
-          }
-          if (-not $pyCandidates -or $pyCandidates.Count -eq 0) { throw 'INTERPRETER_ABSENT' }
-          $py = @($pyCandidates)[0]
-          "PY_EXE=$py" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
-          Write-Host ('PY_EXE_RESOLVED=' + $py)
-          & $py -c "import sys, platform; print('PY_RUNTIME=' + sys.version.split()[0] + ' ' + platform.architecture()[0])"
-          Write-Host ('PY_EXIT=' + $LASTEXITCODE)
-          Write-Host '--- preinstalled package matrix (JSON, no quoting hazards) ---'
-          $probeCode = "import importlib.util as u, json; mods=['mss','PIL','websockify','Crypto','pyDes','numpy']; print('PKG_JSON=' + json.dumps({m: bool(u.find_spec(m)) for m in mods}))"
-          & $py -c $probeCode
-          Write-Host ('PKG_EXIT=' + $LASTEXITCODE)
-          Write-Host '--- residual binaries and loopback state ---'
-          foreach ($p in 'C:\Program Files\TightVNC\tvnserver.exe', 'C:\ProgramData\cloudflared\cloudflared.exe', 'C:\novnc\vnc.html', 'C:\ProgramData\chocolatey\bin\choco.exe') {
-              $state = if (Test-Path -LiteralPath $p) { 'EXISTS ' } else { 'MISSING' }
-              Write-Host ('{0} {1}' -f $state, $p)
-          }
-          $listeners = Get-NetTCPConnection -State Listen -ErrorAction SilentlyContinue
-          Write-Host ('LISTENER_COUNT=' + $listeners.Count)
-          foreach ($port in 5900, 5901, 6080, 6081, 3389, 445, 5985) {
-              $hit = $listeners | Where-Object { $_.LocalPort -eq $port } | Select-Object -First 1
-              Write-Host ('LISTEN port={0} state={1} pid={2}' -f $port, $(if ($hit) { $hit.State } else { 'ABSENT' }), $(if ($hit) { $hit.OwningProcess } else { 0 }))
-          }
-          Write-Host ('RDP_OPEN=' + [bool](Test-NetConnection -ComputerName '127.0.0.1' -Port 3389 -InformationLevel Quiet -WarningAction SilentlyContinue))
-          Write-Host ('EGRESS_GITHUB=' + [bool](Test-NetConnection -ComputerName 'github.com' -Port 443 -InformationLevel Quiet -WarningAction SilentlyContinue))
-          Write-Host ('EGRESS_ARGOTUNNEL=' + [bool](Test-NetConnection -ComputerName 'region1.v2.argotunnel.com' -Port 7844 -InformationLevel Quiet -WarningAction SilentlyContinue))
-          Write-Host ('PREFERRED_TIGHTVNC_URL=' + $env:TIGHTVNC_MSI)
-          Write-Host ('TIGHTVNC_SHA256_PINNED=' + $env:TIGHTVNC_MSI_SHA256)
-
-      - name: Materialise the payloads and prove the VNC crypto against known answers
+      - name: Resolve Python interpreter and provision VNC server
         run: |
           $ErrorActionPreference = 'Continue'
-          $ProgressPreference = 'SilentlyContinue'
-
-          $py = $env:PY_EXE
-          Write-Host ('PY_EXE=' + $py)
-          $pipArgs = @('-m', 'pip', 'install', '--no-cache-dir', '--disable-pip-version-check', '--no-warn-script-location', '--quiet', '--upgrade', 'mss', 'pillow', 'websockify')
-          & $py @pipArgs
-          Write-Host ('PIP_EXIT=' + $LASTEXITCODE)
-          $verify = "import importlib.metadata as m; print('DEP_VERSION mss=' + m.version('mss') + ' pillow=' + m.version('pillow') + ' websockify=' + m.version('websockify'))"
-          & $py -c $verify
-          Write-Host ('VERIFY_EXIT=' + $LASTEXITCODE)
-
-          $utf8 = New-Object System.Text.UTF8Encoding($false)
-          foreach ($payload in @(
-              @{ Path = $env:RELAY_PY; B64 = $env:RELAY_B64 },
-              @{ Path = $env:PROBE_PS; B64 = $env:PROBE_B64 }
-          )) {
-              $buffer = [Convert]::FromBase64String($payload.B64)
-              $input = New-Object System.IO.MemoryStream(, $buffer)
-              $gzip = New-Object System.IO.Compression.GZipStream($input, [System.IO.Compression.CompressionMode]::Decompress)
-              $output = New-Object System.IO.MemoryStream
-              $gzip.CopyTo($output)
-              $gzip.Dispose()
-              [System.IO.File]::WriteAllBytes($payload.Path, $output.ToArray())
-              $output.Dispose()
-              $input.Dispose()
+          $py = @($env:PY_DEFAULT, 'C:\Program Files\Python312\python.exe') |
+            Where-Object { $_ -and (Test-Path -LiteralPath $_) } | Select-Object -First 1
+          if (-not $py) {
+            $dir = 'C:\hostedtoolcache\windows\Python\3.12.10\x64'
+            $zip = 'C:\python312.zip'
+            Invoke-WebRequest 'https://www.python.org/ftp/python/3.12.10/python-3.12.10-amd64.zip' -OutFile $zip -UseBasicParsing
+            Expand-Archive -LiteralPath $zip -DestinationPath $dir -Force
+            Remove-Item -LiteralPath $zip -Force
+            $py = Join-Path $dir 'python.exe'
           }
-          Get-Item -LiteralPath $env:RELAY_PY, $env:PROBE_PS | Select-Object Name, Length | Format-Table -AutoSize
-          & $py -c "import ast; ast.parse(open(r'C:\relay.py', encoding='utf-8').read()); print('RELAY_SYNTAX_OK')"
-          Write-Host ('RELAY_SYNTAX_EXIT=' + $LASTEXITCODE)
-          $tokens = $null
-          $parseErrors = $null
-          [void][System.Management.Automation.Language.Parser]::ParseFile($env:PROBE_PS, [ref]$tokens, [ref]$parseErrors)
-          Write-Host ('PROBE_PARSE_ERRORS=' + $parseErrors.Count + ' PROBE_BYTES=' + (Get-Item -LiteralPath $env:PROBE_PS).Length)
-          Write-Host ('RELAY_SHA256=' + (Get-FileHash -LiteralPath $env:RELAY_PY -Algorithm SHA256).Hash)
-          Write-Host ('PROBE_SHA256=' + (Get-FileHash -LiteralPath $env:PROBE_PS -Algorithm SHA256).Hash)
-          $kat = (& 'C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe' -NoProfile -ExecutionPolicy Bypass -File $env:PROBE_PS -Mode vec -Password $env:VNC_PASSWORD 2>&1)
-          $kat | ForEach-Object { Write-Host ('KAT: ' + $_) }
-          if ($LASTEXITCODE -ne 0) { throw 'VNC_CRYPTO_KNOWN_ANSWER_FAILED' }
-          if (-not $env:VNC_PASSWORD) { throw 'VNC_PASSWORD_EMPTY' }
-          Write-Host ('VNC_PASSWORD_LENGTH=' + $env:VNC_PASSWORD.Length)
-          $blob = (& 'C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe' -NoProfile -ExecutionPolicy Bypass -File $env:PROBE_PS -Mode blob -Password $env:VNC_PASSWORD 2>&1 | Select-Object -Last 1)
-          $blob = ([string]$blob).Trim()
-          if ($blob -notmatch '^[0-9a-f]{16}$') { throw ('VNC_BLOB_INVALID raw=' + $blob) }
-          "VNC_PASSWORD_BLOB_HEX=$blob" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
-          Write-Host ('VNC_PASSWORD_BLOB_HEX=' + $blob)
-          Write-Host ('VNC_BLOB_KNOWN_ANSWER_OK=True')
-
-      - name: Install TightVNC from the pinned MSI, seed HKLM and prove service RFB auth
-        run: |
-          $ErrorActionPreference = 'Continue'
-          $ProgressPreference = 'SilentlyContinue'
+          $env:PY_EXE = $py
+          "PY_EXE=$py" >> $env:GITHUB_ENV
 
           $server = Join-Path $env:TIGHTVNC_ROOT 'tvnserver.exe'
-          $msi = 'C:\tightvnc.msi'
           if (-not (Test-Path -LiteralPath $server)) {
-              if (-not (Test-Path -LiteralPath $msi)) {
-                  Invoke-WebRequest -Uri $env:TIGHTVNC_MSI -OutFile $msi -UseBasicParsing -TimeoutSec 300
-                  Write-Host ('MSI_DOWNLOAD_EXIT=' + $LASTEXITCODE)
-              }
-              $hash = (Get-FileHash -LiteralPath $msi -Algorithm SHA256).Hash
-              Write-Host ('MSI_SHA256=' + $hash + ' PINNED=' + $env:TIGHTVNC_MSI_SHA256)
-              if ($hash -ne $env:TIGHTVNC_MSI_SHA256) { throw ('MSI_INTEGRITY_MISMATCH got=' + $hash) }
-              $log = 'C:\tightvnc-install.log'
-              $args = @('/i', $msi, '/qn', '/norestart', 'ADDLOCAL=Server', 'SERVER_REGISTER_AS_SERVICE=1', 'SERVER_ADD_FIREWALL_EXCEPTION=0', 'SET_USEVNCAUTHENTICATION=1', 'VALUE_OF_USEVNCAUTHENTICATION=1', 'SET_PASSWORD=1', ('VALUE_OF_PASSWORD=' + $env:VNC_PASSWORD), 'SET_VIEWONLYPASSWORD=0', 'SET_ALLOWLOOPBACK=1', 'VALUE_OF_ALLOWLOOPBACK=1', 'SET_RFBPORT=1', ('VALUE_OF_RFBPORT=' + $env:VNC_PORT), 'SET_RUNCONTROLINTERFACE=0', 'VALUE_OF_RUNCONTROLINTERFACE=0', '/l*v', $log)
-              $proc = Start-Process -FilePath 'C:\Windows\System32\msiexec.exe' -ArgumentList $args -Wait -PassThru -NoNewWindow
-              Write-Host ('MSI_EXIT=' + $proc.ExitCode)
-              if ($proc.ExitCode -ne 0) { Get-Content -LiteralPath $log -Tail 40 -ErrorAction SilentlyContinue }
+            $choco = 'C:\ProgramData\chocolatey\bin\choco.exe'
+            & $choco install tightvnc -y --no-progress --limit-output --ignore-checksums
           }
-          $present = Test-Path -LiteralPath $server
-          Write-Host ('TVNSERVER_PRESENT=' + $present)
-          if (-not $present) { throw 'TVNSERVER_ABSENT_AFTER_INSTALL' }
-          Get-ChildItem -LiteralPath $env:TIGHTVNC_ROOT -Filter '*.exe' | Select-Object Name, Length | Format-Table -AutoSize
-          Write-Host ('TVNSERVER_SHA256=' + (Get-FileHash -LiteralPath $server -Algorithm SHA256).Hash)
+          if (-not (Test-Path -LiteralPath $server)) { throw 'No VNC server binary available' }
+          $env:VNC_SERVER_EXE = $server
+          $env:VNC_DIR = Split-Path -Parent $server
+          "VNC_SERVER_EXE=$server" >> $env:GITHUB_ENV
+          "VNC_DIR=$(Split-Path -Parent $server)" >> $env:GITHUB_ENV
 
-          # stop the freshly installed service before touching the hive: a running tvnserver
-          # rewrites its configuration on shutdown and would clobber the seed below
-          Get-Service -Name 'tvnserver' -ErrorAction SilentlyContinue | Stop-Service -Force -ErrorAction SilentlyContinue
-          Get-Process -Name tvnserver -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
-          Start-Sleep -Seconds 2
-          $hex = $env:VNC_PASSWORD_BLOB_HEX
-          $blob = [byte[]]::new(8)
-          for ($i = 0; $i -lt 8; $i++) { $blob[$i] = [Convert]::ToByte($hex.Substring($i * 2, 2), 16) }
-          $settings = [ordered]@{
-              Password = $blob
-              ControlPassword = $blob
-              RfbPort = [int]$env:VNC_PORT
-              UseVncAuthentication = 1
-              UseControlAuthentication = 1
-              AcceptRfbConnections = 1
-              AcceptHttpConnections = 0
-              AllowLoopback = 1
-              LoopbackOnly = 1
-              UseMirrorDriver = 0
-              GrabTransparentWindows = 0
-              PollingInterval = 40
-              RunControlInterface = 0
-              ServiceVideoRecognition = 0
-              RGBAOrder = 0
-          }
-          foreach ($hive in 'HKLM:\SOFTWARE\TightVNC\Server', 'HKLM:\SOFTWARE\WOW6432Node\TightVNC\Server') {
-              New-Item -Path $hive -Force | Out-Null
-              foreach ($name in $settings.Keys) {
-                  $value = $settings[$name]
-                  $type = if ($value -is [byte[]]) { 'Binary' } else { 'DWord' }
-                  New-ItemProperty -Path $hive -Name $name -PropertyType $type -Value $value -Force | Out-Null
-              }
-              Write-Host ('REGISTRY_SEEDED=' + $hive)
-          }
-          $seededHex = (((Get-ItemProperty -Path 'HKLM:\SOFTWARE\TightVNC\Server' -Name 'Password').Password | ForEach-Object { $_.ToString('x2') }) -join '')
-          Write-Host ('REGISTRY_PASSWORD_BLOB=' + $seededHex)
-          Write-Host ('REGISTRY_MATCHES_EXPECTED=' + [bool]($seededHex -eq $hex))
-          Get-ItemProperty -Path 'HKLM:\SOFTWARE\TightVNC\Server' | Select-Object RfbPort, UseVncAuthentication, AllowLoopback, LoopbackOnly, AcceptRfbConnections | Format-List
-
-          try {
-              $svcOut = & $server -setservicevncpass $env:VNC_PASSWORD 2>&1
-              $svcOut | ForEach-Object { Write-Host ('SETPASS: ' + $_) }
-              Write-Host ('SETSERVICEVNCPASS_EXIT=' + $LASTEXITCODE)
-          }
-          catch { Write-Host ('SETSERVICEVNCPASS_ERROR ' + $_.Exception.Message) }
-          $settledHex = ''
-          for ($i = 0; $i -lt 5; $i++) {
-              $settledHex = (((Get-ItemProperty -Path 'HKLM:\SOFTWARE\TightVNC\Server' -Name 'Password' -ErrorAction SilentlyContinue).Password | ForEach-Object { $_.ToString('x2') }) -join '')
-              if ($settledHex -eq $hex) { break }
-              Start-Sleep -Seconds 1
-          }
-          Write-Host ('REGISTRY_PASSWORD_BLOB_AFTER_SETPASS=' + $settledHex)
-          Set-Service -Name 'tvnserver' -StartupType Automatic -ErrorAction SilentlyContinue
-          try { Start-Service -Name 'tvnserver' -ErrorAction Stop; Write-Host 'SERVICE_STARTED=tvnserver' }
-          catch { Write-Host ('SERVICE_START_ERROR ' + $_.Exception.Message) }
-          if (-not (Get-Process -Name tvnserver -ErrorAction SilentlyContinue)) {
-              Start-Process -FilePath $server -ArgumentList '-run' -WorkingDirectory $env:TIGHTVNC_ROOT -ErrorAction SilentlyContinue
-              Write-Host 'SERVER_LAUNCHED=direct -run'
-          }
-          $listening = $false
-          for ($i = 0; $i -lt 30; $i++) {
-              Start-Sleep -Seconds 2
-              if (Get-NetTCPConnection -LocalPort ([int]$env:VNC_PORT) -State Listen -ErrorAction SilentlyContinue) { $listening = $true; break }
-          }
-          Write-Host ('RFB_LISTENING=' + $listening)
-          if (-not $listening) { throw 'RFB_PORT_NOT_BOUND' }
-          $service = Get-CimInstance Win32_Service -Filter "Name='tvnserver'" -ErrorAction SilentlyContinue
-          if ($service) { Write-Host ('SERVICE_STATE=' + $service.State + ' START=' + $service.StartMode + ' ACCOUNT=' + $service.StartName + ' PID=' + $service.ProcessId) }
-          $auth = $false
-          for ($attempt = 1; $attempt -le 4; $attempt++) {
-              $out = & 'C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe' -NoProfile -ExecutionPolicy Bypass -File $env:PROBE_PS -Mode rfb -Port ([int]$env:VNC_PORT) -BlobHex $hex 2>&1
-              $out | ForEach-Object { Write-Host ('PROBE: ' + $_) }
-              if ($LASTEXITCODE -eq 0) { $auth = $true; break }
-              Start-Sleep -Seconds 3
-          }
-          Write-Host ('VNC_AUTH=' + $auth)
-          if (-not $auth) { throw 'VNC_AUTH_FAILED' }
-          $owner = (Get-NetTCPConnection -LocalPort ([int]$env:VNC_PORT) -State Listen -ErrorAction SilentlyContinue | Select-Object -First 1).OwningProcess
-          Write-Host ('RFB_OWNER_PID=' + $owner + ' SESSION=' + (Get-Process -Id $owner -ErrorAction SilentlyContinue).SessionId)
-          "VNC_AUTH=$auth" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
-
-      - name: Inject the interactive session - widen the console, seed HKCU and bind a session-2 RFB listener
+      - name: Install noVNC and websockify
         run: |
-          $ErrorActionPreference = 'Continue'
-          $ProgressPreference = 'SilentlyContinue'
-
-          Start-Process -FilePath 'C:\Windows\explorer.exe' -ArgumentList '/n,C:\' -ErrorAction SilentlyContinue
-          Start-Process -FilePath 'C:\Windows\System32\cmd.exe' -ArgumentList '/c title desktop-session && mode con:cols=120 lines=34' -ErrorAction SilentlyContinue
-          Start-Sleep -Seconds 3
-          Get-Process -Name explorer, dwm, sihost -ErrorAction SilentlyContinue | Select-Object Name, Id, SessionId | Sort-Object SessionId | Format-Table -AutoSize
-          $guardBatch = @(
-              '@echo off',
-              'powercfg /change standby-timeout-ac 0',
-              'powercfg /change monitor-timeout-ac 0',
-              'powercfg /change hibernate-timeout-ac 0',
-              'powercfg /change disk-timeout-ac 0',
-              'powercfg /change monitor-timeout-dc 0',
-              'reg add "HKLM\SOFTWARE\Policies\Microsoft\Windows\Personalization" /v NoLockScreen /t REG_DWORD /d 1 /f',
-              'exit 0'
-          )
-          [System.IO.File]::WriteAllText('C:\console_keepawake.bat', (($guardBatch -join "`r`n") + "`r`n"), (New-Object System.Text.UTF8Encoding($false)))
-          $consoleTask = @{
-              Name = 'DesktopConsoleKeepAwake'
-              Batch = 'C:\console_keepawake.bat'
-          }
-          Unregister-ScheduledTask -TaskName $consoleTask.Name -Confirm:$false -ErrorAction SilentlyContinue
-          $action = New-ScheduledTaskAction -Execute 'C:\Windows\System32\cmd.exe' -Argument ('/c "' + $consoleTask.Batch + '"')
-          $registered = $false
-          foreach ($logon in 'Interactive', 'S4U') {
-              try {
-                  $taskPrincipal = New-ScheduledTaskPrincipal -UserId $env:USERNAME -LogonType $logon -RunLevel Highest
-                  $taskSettings = New-ScheduledTaskSettingsSet -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries -ExecutionTimeLimit (New-TimeSpan -Minutes 10) -MultipleInstances IgnoreNew
-                  Register-ScheduledTask -TaskName $consoleTask.Name -Action $action -Principal $taskPrincipal -Settings $taskSettings -Force -ErrorAction Stop | Out-Null
-                  $registered = $logon
-                  break
-              }
-              catch { Write-Host ('KEEPAWAKE_PRINCIPAL_REJECTED logon=' + $logon + ' :: ' + $_.Exception.Message) }
-          }
-          Write-Host ('KEEPAWAKE_TASK_PRINCIPAL=' + $registered)
-          if ($registered) {
-              Start-ScheduledTask -TaskName $consoleTask.Name -ErrorAction SilentlyContinue
-              Start-Sleep -Seconds 4
-              Write-Host ('KEEPAWAKE_TASK_STATE=' + (Get-ScheduledTask -TaskName $consoleTask.Name -ErrorAction SilentlyContinue).State)
-              Unregister-ScheduledTask -TaskName $consoleTask.Name -Confirm:$false -ErrorAction SilentlyContinue
-          }
-          $session2 = Get-Process -Name explorer -ErrorAction SilentlyContinue | Where-Object { $_.SessionId -ne 0 } | Select-Object -First 1
-          $interactiveSession = if ($session2) { [int]$session2.SessionId } else { [int](Get-Process -Id $PID).SessionId }
-          Write-Host ('INTERACTIVE_EXPLORER_SESSION=' + $interactiveSession)
-          Write-Host ('CURRENT_PROCESS_SESSION=' + (Get-Process -Id $PID).SessionId)
-          Write-Host ('SESSIONNAME=' + $env:SESSIONNAME)
-          qwinsta
-
-
-          # ---- session-2 capture instance -------------------------------------------
-          # A LocalSystem service runs in session 0 and cannot paint the interactive
-          # desktop. Run a second tvnserver inside this session (we are already in the
-          # logged-on console session) on its own port, configured through HKCU.
-          $appPort = [int]$env:VNC_APP_PORT
-          $appHive = 'HKCU:\SOFTWARE\TightVNC\Server'
-          New-Item -Path $appHive -Force | Out-Null
-          $appBlob = [byte[]]::new(8)
-          for ($i = 0; $i -lt 8; $i++) { $appBlob[$i] = [Convert]::ToByte($env:VNC_PASSWORD_BLOB_HEX.Substring($i * 2, 2), 16) }
-          $appSettings = [ordered]@{
-              Password = $appBlob
-              RfbPort = $appPort
-              UseVncAuthentication = 1
-              AcceptRfbConnections = 1
-              AcceptHttpConnections = 0
-              AllowLoopback = 1
-              LoopbackOnly = 1
-              RunControlInterface = 0
-              UseMirrorDriver = 0
-              GrabTransparentWindows = 1
-              PollingInterval = 40
-              ServiceVideoRecognition = 0
-              RGBAOrder = 0
-          }
-          foreach ($name in $appSettings.Keys) {
-              $value = $appSettings[$name]
-              $type = if ($value -is [byte[]]) { 'Binary' } else { 'DWord' }
-              New-ItemProperty -Path $appHive -Name $name -PropertyType $type -Value $value -Force | Out-Null
-          }
-          Write-Host ('HKCU_SEEDED=' + $appHive + ' RFB_PORT=' + $appPort)
-          Write-Host ('HKCU_PASSWORD_BLOB=' + (((Get-ItemProperty -Path $appHive -Name 'Password').Password | ForEach-Object { $_.ToString('x2') }) -join ''))
-
-          $sessionProc = Get-Process -Name tvnserver -ErrorAction SilentlyContinue | Where-Object { $_.SessionId -eq $interactiveSession } | Select-Object -First 1
-          if (-not $sessionProc) {
-              $serverExe = Join-Path $env:TIGHTVNC_ROOT 'tvnserver.exe'
-              Start-Process -FilePath $serverExe -ArgumentList '-run' -WorkingDirectory $env:TIGHTVNC_ROOT -ErrorAction SilentlyContinue
-              Write-Host 'SESSION_INSTANCE_LAUNCHED=True'
-          }
-          $appUp = $false
-          for ($i = 0; $i -lt 30; $i++) {
-              Start-Sleep -Seconds 2
-              if (Get-NetTCPConnection -LocalPort $appPort -State Listen -ErrorAction SilentlyContinue) { $appUp = $true; break }
-          }
-          Write-Host ('SESSION_RFB_LISTENING=' + $appUp + ' PORT=' + $appPort)
-          $appPid = (Get-NetTCPConnection -LocalPort $appPort -State Listen -ErrorAction SilentlyContinue | Select-Object -First 1).OwningProcess
-          Write-Host ('SESSION_RFB_PID=' + $appPid + ' SESSION=' + $(if ($appPid) { (Get-Process -Id $appPid -ErrorAction SilentlyContinue).SessionId } else { '' }))
-
-          $appAuth = $false
-          if ($appUp) {
-              $hexBlob = $env:VNC_PASSWORD_BLOB_HEX
-              for ($attempt = 1; $attempt -le 3; $attempt++) {
-                  $out = & 'C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe' -NoProfile -ExecutionPolicy Bypass -File $env:PROBE_PS -Mode rfb -Port $appPort -BlobHex $hexBlob 2>&1
-                  $out | ForEach-Object { Write-Host ('SESSION_PROBE: ' + $_) }
-                  if ($LASTEXITCODE -eq 0) { $appAuth = $true; break }
-                  Start-Sleep -Seconds 3
-              }
-          }
-          Write-Host ('SESSION_VNC_AUTH=' + $appAuth)
-          $activePort = if ($appUp -and $appAuth) { $appPort } else { [int]$env:VNC_PORT }
-          Write-Host ('VNC_ACTIVE_PORT=' + $activePort + ' SOURCE=' + $(if ($activePort -eq $appPort) { 'session2-application' } else { 'session0-service' }))
-          "VNC_ACTIVE_PORT=$activePort" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
-          "INTERACTIVE_SESSION=$interactiveSession" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
-          Write-Host ('CONSOLE_GUARD_DONE=True')
-
-      - name: Stage noVNC and prove the websockify bridge against the active endpoint
-        run: |
-          $ErrorActionPreference = 'Continue'
-          $ProgressPreference = 'SilentlyContinue'
-
-          $py = $env:PY_EXE
+          $ErrorActionPreference = 'Stop'
+          $py = if ($env:PY_EXE) { $env:PY_EXE } else { $env:PY_DEFAULT }
+          New-Item -ItemType Directory -Force -Path $env:NOVNC_DIR | Out-Null
           $zip = 'C:\novnc.zip'
-          if (-not (Test-Path -LiteralPath (Join-Path $env:NOVNC_DIR 'app\ui.js'))) {
-              Invoke-WebRequest -Uri 'https://github.com/novnc/noVNC/archive/refs/tags/v1.5.0.zip' -OutFile $zip -UseBasicParsing -TimeoutSec 300
-              Write-Host ('NOVNC_DOWNLOAD_EXIT=' + $LASTEXITCODE)
-              Expand-Archive -LiteralPath $zip -DestinationPath 'C:\novnc-src' -Force
-              $inner = Get-ChildItem -Path 'C:\novnc-src' -Directory | Select-Object -First 1
-              New-Item -ItemType Directory -Force -Path $env:NOVNC_DIR | Out-Null
-              Copy-Item -Path (Join-Path $inner.FullName '*') -Destination $env:NOVNC_DIR -Recurse -Force
-              Copy-Item -LiteralPath (Join-Path $env:NOVNC_DIR 'vnc.html') -Destination (Join-Path $env:NOVNC_DIR 'index.html') -Force
-              Remove-Item -LiteralPath 'C:\novnc-src' -Recurse -Force -ErrorAction SilentlyContinue
-              Remove-Item -LiteralPath $zip -Force -ErrorAction SilentlyContinue
-          }
-          $uiJs = Join-Path $env:NOVNC_DIR 'app\ui.js'
-          Write-Host ('NOVNC_ASSETS=' + (Test-Path -LiteralPath $uiJs) + ' BYTES=' + $(if (Test-Path -LiteralPath $uiJs) { (Get-Item -LiteralPath $uiJs).Length } else { 0 }))
-          if (-not (Test-Path -LiteralPath $uiJs)) { throw 'NOVNC_ASSETS_MISSING' }
+          Invoke-WebRequest 'https://github.com/novnc/noVNC/archive/refs/tags/v1.5.0.zip' -OutFile $zip -UseBasicParsing
+          Expand-Archive -LiteralPath $zip -DestinationPath 'C:\' -Force
+          Remove-Item -LiteralPath $zip -Force
+          $src = Get-ChildItem -Path 'C:\' -Directory -Filter 'novnc-*' | Select-Object -First 1
+          Copy-Item -Path (Join-Path $src.FullName '*') -Destination $env:NOVNC_DIR -Recurse -Force
+          Copy-Item -Path (Join-Path $env:NOVNC_DIR 'vnc.html') -Destination (Join-Path $env:NOVNC_DIR 'index.html') -Force
+          Remove-Item -LiteralPath $src.FullName -Recurse -Force
+          & $py -m pip install --no-cache-dir --quiet --disable-pip-version-check websockify
 
-          $bridge = Start-Process -FilePath $py -ArgumentList @('-m', 'websockify', '--web', $env:NOVNC_DIR, $env:NOVNC_PORT, ('127.0.0.1:' + $env:VNC_ACTIVE_PORT)) -PassThru -RedirectStandardOutput 'C:\novnc_bridge.out.log' -RedirectStandardError 'C:\novnc_bridge.err.log'
-          Write-Host ('BRIDGE_PID=' + $bridge.Id + ' SESSION=' + $bridge.SessionId)
-          $bound = $false
-          for ($i = 0; $i -lt 30; $i++) {
-              Start-Sleep -Seconds 2
-              if (Get-NetTCPConnection -LocalPort ([int]$env:NOVNC_PORT) -State Listen -ErrorAction SilentlyContinue) { $bound = $true; break }
+      - name: Write VNC configuration
+        run: |
+          $ErrorActionPreference = 'Stop'
+          foreach ($tight in @('HKLM:\SOFTWARE\TightVNC\Server', 'HKCU:\SOFTWARE\TightVNC\Server')) {
+            New-Item -Path $tight -Force | Out-Null
+            New-ItemProperty -Path $tight -Name 'RfbPort' -PropertyType DWord -Value ([int]$env:VNC_PORT) -Force | Out-Null
+            New-ItemProperty -Path $tight -Name 'AllowLoopback' -PropertyType DWord -Value 1 -Force | Out-Null
+            New-ItemProperty -Path $tight -Name 'UseVncAuthentication' -PropertyType DWord -Value 0 -Force | Out-Null
+            New-ItemProperty -Path $tight -Name 'AcceptRfbConnections' -PropertyType DWord -Value 1 -Force | Out-Null
           }
-          Write-Host ('BRIDGE_LISTENING=' + $bound)
-          if (-not $bound) { Get-Content -LiteralPath 'C:\novnc_bridge.err.log' -Tail 25 -ErrorAction SilentlyContinue; throw 'BRIDGE_NOT_BOUND' }
-          $http = 0
-          try { $http = [int](Invoke-WebRequest -Uri ('http://127.0.0.1:' + $env:NOVNC_PORT + '/vnc.html') -UseBasicParsing -TimeoutSec 20).StatusCode } catch { Write-Host ('BRIDGE_HTTP_ERROR ' + $_.Exception.Message) }
-          Write-Host ('BRIDGE_HTTP=' + $http)
-          $wsBanner = ''
-          for ($i = 0; $i -lt 10; $i++) {
-              $out = & 'C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe' -NoProfile -ExecutionPolicy Bypass -File $env:PROBE_PS -Mode ws -WsUrl ('ws://127.0.0.1:' + $env:NOVNC_PORT + '/') 2>&1
-              $line = ($out | Where-Object { $_ -match 'WS_RFB_BANNER=' } | Select-Object -First 1)
-              if ($line) { $wsBanner = ([string]$line).Trim(); break }
-              if ($i -eq 9) { $out | ForEach-Object { Write-Host ('WS_PROBE: ' + $_) } }
-              Start-Sleep -Seconds 2
-          }
-          Write-Host ('BRIDGE_WS=' + $wsBanner)
-          if (-not $wsBanner) {
-              Get-Content -LiteralPath 'C:\novnc_bridge.err.log' -Tail 25 -ErrorAction SilentlyContinue
-              throw 'BRIDGE_WS_HANDSHAKE_FAILED'
-          }
-          "BRIDGE_WS=$wsBanner" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
 
-      - name: Stage cloudflared, validate the binary and resolve the tunnel flags
+      - name: Start VNC server on Session desktop
         run: |
           $ErrorActionPreference = 'Continue'
-          $ProgressPreference = 'SilentlyContinue'
+          $port = [int]$env:VNC_PORT
+          $server = $env:VNC_SERVER_EXE
+          $dir = Split-Path -Parent $server
+          Start-Process -FilePath $server -ArgumentList '-run' -WorkingDirectory $dir -WindowStyle Hidden
 
-          $cf = $env:CF_STAGED
-          if (-not (Test-Path -LiteralPath $cf)) {
-              $cfUrl = 'https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-windows-amd64.exe'
-              for ($attempt = 1; $attempt -le 3; $attempt++) {
-                  try {
-                      Invoke-WebRequest -Uri $cfUrl -OutFile $cf -UseBasicParsing -TimeoutSec 300 -ErrorAction Stop
-                      break
-                  }
-                  catch {
-                      Write-Host ('CF_DOWNLOAD_RETRY attempt=' + $attempt + ' ' + $_.Exception.Message)
-                      Start-Sleep -Seconds 5
-                  }
-              }
-          }
-          $staged = Test-Path -LiteralPath $cf
-          Write-Host ('CF_STAGED_PRESENT=' + $staged + ' BYTES=' + $(if ($staged) { (Get-Item -LiteralPath $cf).Length } else { 0 }))
-          if (-not $staged) { throw 'CLOUDFLARED_ABSENT' }
-          Write-Host ('CF_STAGED_SHA256=' + (Get-FileHash -LiteralPath $cf -Algorithm SHA256).Hash)
-
-          $version = (& $cf --version 2>&1 | Out-String).Trim()
-          Write-Host ('CF_VERSION=' + $version)
-          Write-Host ('CF_VERSION_EXIT=' + $LASTEXITCODE)
-
-          $effective = @('--protocol', 'http2', '--edge-ip-version', '4', '--no-autoupdate', '--loglevel', 'info')
-          $legacy = @('--no-autoupdate', '--loglevel', 'info')
-          $helpText = ''
-          try { $helpText = (& $cf tunnel --help 2>&1 | Out-String) } catch { Write-Host ('CF_HELP_ERROR ' + $_.Exception.Message) }
-          Write-Host ('CF_HELP_BYTES=' + $helpText.Length)
-          $final = @()
-          foreach ($candidate in @($effective, $legacy)) {
-              $missing = @($candidate | Where-Object { $helpText -notmatch [regex]::Escape($_) })
-              Write-Host ('CF_FLAG_TEST candidate=' + ($candidate -join ' ') + ' MISSING=' + ($missing -join ','))
-              if ($missing.Count -eq 0) { $final = $candidate; break }
-          }
-          if ($final.Count -eq 0) { $final = $legacy }
-
-          $env:CF_TUNNEL_FLAGS = ($final -join ' ')
-          "CF_TUNNEL_FLAGS=$($final -join ' ')" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
-          Write-Host ('CF_TUNNEL_FLAGS=' + $env:CF_TUNNEL_FLAGS)
-          Write-Host ('CF_TUNNEL_FLAGS_RESOLVED=' + $env:CF_TUNNEL_FLAGS)
-
-          $cfDir = Split-Path -Path $env:CF_EXE -Parent
-          if (-not (Test-Path -LiteralPath $cfDir)) { New-Item -ItemType Directory -Force -Path $cfDir | Out-Null }
-          if (-not (Test-Path -LiteralPath $env:CF_EXE)) {
-              try {
-                  Copy-Item -LiteralPath $cf -Destination $env:CF_EXE -Force -ErrorAction Stop
-                  Write-Host ('CF_EXE_STAGED=' + $env:CF_EXE)
-              }
-              catch { Write-Host ('CF_EXE_COPY_ERROR ' + $_.Exception.Message) }
-          }
-          Write-Host ('CF_EXE_PRESENT=' + (Test-Path -LiteralPath $env:CF_EXE))
-          if (-not (Test-Path -LiteralPath $env:CF_EXE)) {
-              $env:CF_EXE = $cf
-              "CF_EXE=$cf" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
-              Write-Host ('CF_EXE_FALLBACK=' + $cf)
-          }
-          $smoke = (& $env:CF_EXE --version 2>&1 | Out-String).Trim()
-          Write-Host ('CF_EXE_VERSION=' + $smoke)
-          if (-not $smoke) { throw 'CLOUDFLARED_NOT_EXECUTABLE' }
-
-      - name: Write the relay, tunnel and guard launchers
+      - name: Install cloudflared
         run: |
-          $ErrorActionPreference = 'Continue'
-          $ProgressPreference = 'SilentlyContinue'
+          $ErrorActionPreference = 'Stop'
+          Invoke-WebRequest 'https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-windows-amd64.exe' -OutFile $env:CF_STAGED -UseBasicParsing
+          New-Item -ItemType Directory -Force -Path (Split-Path $env:CF_EXE) | Out-Null
+          Copy-Item -LiteralPath $env:CF_STAGED -Destination $env:CF_EXE -Force
 
-          $py = $env:PY_EXE
-          $utf8 = New-Object System.Text.UTF8Encoding($false)
-          function Write-Batch {
-              param([string]$Path, [string[]]$Lines)
-              [System.IO.File]::WriteAllText($Path, (($Lines -join "`r`n") + "`r`n"), $utf8)
-              Write-Host ('BATCH_WRITTEN=' + $Path + ' BYTES=' + (Get-Item -LiteralPath $Path).Length)
-          }
-          $relayBat = @(
-              '@echo off',
-              ('set RELAY_TOKEN=' + $env:VNC_PASSWORD),
-              ('set RELAY_PORT=' + $env:WEB_PORT),
-              ('set RELAY_VNC_PORT=' + $env:VNC_ACTIVE_PORT),
-              'set RELAY_VNC=1',
-              ('set RELAY_VNC_BLOB=' + $env:VNC_PASSWORD_BLOB_HEX),
-              'set RELAY_FPS=3',
-              'set RELAY_MAXW=1600',
-              'set RELAY_QUALITY=70',
-              'set RELAY_LOG=C:\relay.log',
-              ('"' + $py + '" "' + $env:RELAY_PY + '" > C:\relay.out.log 2> C:\relay.err.log')
-          )
-          Write-Batch -Path 'C:\relay.bat' -Lines $relayBat
-          $relayTaskBat = @(
-              '@echo off',
-              ('set RELAY_TOKEN=' + $env:VNC_PASSWORD),
-              ('set RELAY_PORT=' + $env:WEB_PORT),
-              ('set RELAY_VNC_PORT=' + $env:VNC_ACTIVE_PORT),
-              ('set RELAY_VNC_BLOB=' + $env:VNC_PASSWORD_BLOB_HEX),
-              'set RELAY_VNC=1',
-              'set RELAY_FPS=3',
-              'set RELAY_MAXW=1600',
-              'set RELAY_QUALITY=70',
-              'set RELAY_LOG=C:\relay_session.log',
-              ('"' + $py + '" "' + $env:RELAY_PY + '" > C:\relay_session.out.log 2> C:\relay_session.err.log')
-          )
-          Write-Batch -Path 'C:\relay_session.bat' -Lines $relayTaskBat
-          foreach ($tunnel in @(
-              @{ File = 'C:\tunnel_web.bat'; Target = ('http://127.0.0.1:' + $env:WEB_PORT); Log = $env:CF_LOG_WEB; Err = $env:CF_ERR_WEB },
-              @{ File = 'C:\tunnel_novnc.bat'; Target = ('http://127.0.0.1:' + $env:NOVNC_PORT); Log = $env:CF_LOG_NOVNC; Err = $env:CF_ERR_NOVNC }
-          )) {
-              $cfArgs = @('tunnel', '--url', $tunnel.Target)
-              $flagList = @()
-              foreach ($flag in ($env:CF_TUNNEL_FLAGS.Split([char]32))) { if ($flag) { $flagList += $flag } }
-              $cfArgs += $flagList
-              $cfLine = '"' + $env:CF_EXE + '" ' + ($cfArgs -join ' ') + ' > "' + $tunnel.Log + '" 2> "' + $tunnel.Err + '"'
-              Write-Batch -Path $tunnel.File -Lines @('@echo off', $cfLine)
-          }
-          # The job already runs inside the interactive session, so the session-2
-          # capture process is started directly; the scheduled task is only a
-          # supervisor for restarts after a logoff/logon cycle.
-          $relayRunning = Get-NetTCPConnection -LocalPort ([int]$env:WEB_PORT) -State Listen -ErrorAction SilentlyContinue
-          if (-not $relayRunning) {
-              $sessionRelay = Start-Process -FilePath 'C:\relay_session.bat' -PassThru -ErrorAction SilentlyContinue
-              Write-Host ('SESSION_RELAY_PID=' + $(if ($sessionRelay) { $sessionRelay.Id } else { 0 }))
-          }
-          $sessionTaskName = 'DesktopCaptureSession2'
-          Unregister-ScheduledTask -TaskName $sessionTaskName -Confirm:$false -ErrorAction SilentlyContinue
-          $sessionAction = New-ScheduledTaskAction -Execute 'C:\Windows\System32\cmd.exe' -Argument '/c "C:\relay_session.bat"'
-          $sessionRegistered = ''
-          foreach ($logon in 'Interactive', 'S4U') {
-              try {
-                  $sessionPrincipal = New-ScheduledTaskPrincipal -UserId ($env:USERDOMAIN + '\' + $env:USERNAME) -LogonType $logon -RunLevel Highest
-                  $sessionSettings = New-ScheduledTaskSettingsSet -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries -MultipleInstances IgnoreNew -RestartCount 3 -RestartInterval (New-TimeSpan -Minutes 1) -ExecutionTimeLimit ([TimeSpan]::Zero)
-                  Register-ScheduledTask -TaskName $sessionTaskName -Action $sessionAction -Principal $sessionPrincipal -Settings $sessionSettings -Force -ErrorAction Stop | Out-Null
-                  $sessionRegistered = $logon
-                  break
-              }
-              catch { Write-Host ('RELAY_TASK_PRINCIPAL_REJECTED logon=' + $logon + ' :: ' + $_.Exception.Message) }
-          }
-          Write-Host ('RELAY_TASK_PRINCIPAL=' + $sessionRegistered)
-          Write-Host ('RELAY_TASK_NAME=' + $sessionTaskName)
-          if ($sessionRegistered) {
-              $taskInfo = Get-ScheduledTaskInfo -TaskName $sessionTaskName -ErrorAction SilentlyContinue
-              Write-Host ('RELAY_TASK_LASTRESULT=' + $(if ($taskInfo) { $taskInfo.LastTaskResult } else { 'na' }))
-          }
+      - name: Write guard loop and tunnel launchers
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $py = if ($env:PY_EXE) { $env:PY_EXE } else { $env:PY_DEFAULT }
+
           $guard = @(
-              '$ErrorActionPreference = "SilentlyContinue"',
-              '$log = "C:\vncguard.log"',
-              'function Note($m) { Add-Content -LiteralPath $log -Value ((Get-Date -Format "HH:mm:ss") + " " + $m) }',
-              'Note "guard online"',
-              'while ($true) {',
-              '  if (-not (Get-NetTCPConnection -LocalPort __VNC_PORT__ -State Listen -ErrorAction SilentlyContinue)) {',
-              '    Start-Service -Name tvnserver -ErrorAction SilentlyContinue',
-              '    Start-Sleep -Seconds 3',
-              '    if (-not (Get-NetTCPConnection -LocalPort __VNC_PORT__ -State Listen -ErrorAction SilentlyContinue)) { Start-Process -FilePath "__TVNSERVER__" -ArgumentList "-run" -ErrorAction SilentlyContinue }',
-              '    Note "rfb restarted"',
-              '  }',
-              '  if (-not (Get-NetTCPConnection -LocalPort __NOVNC_PORT__ -State Listen -ErrorAction SilentlyContinue)) {',
-              '    Start-Process -FilePath "__PY_EXE__" -ArgumentList @("-m","websockify","--web","__NOVNC_DIR__","__NOVNC_PORT__","127.0.0.1:__VNC_PORT__") -ErrorAction SilentlyContinue',
-              '    Note "bridge restarted"',
-              '  }',
-              '  if (-not (Get-NetTCPConnection -LocalPort __WEB_PORT__ -State Listen -ErrorAction SilentlyContinue)) {',
-              '    Start-Process -FilePath "C:\relay.bat" -ErrorAction SilentlyContinue',
-              '    Note "relay restarted"',
-              '  }',
-              '  if (@(Get-Process -Name cloudflared -ErrorAction SilentlyContinue).Count -lt 2) {',
-              '    Start-Process -FilePath "C:\tunnel_web.bat" -ErrorAction SilentlyContinue',
-              '    Start-Process -FilePath "C:\tunnel_novnc.bat" -ErrorAction SilentlyContinue',
-              '    Note "tunnels restarted"',
-              '  }',
-              '  Start-Sleep -Seconds 10',
-              '}'
+            '$ErrorActionPreference = "SilentlyContinue"',
+            ('$py = "' + $py + '"'),
+            '$server = "C:\Program Files\TightVNC\tvnserver.exe"',
+            'while ($true) {',
+            '  if (-not (Get-NetTCPConnection -LocalPort 5900 -State Listen -ErrorAction SilentlyContinue)) {',
+            '    Start-Process -FilePath $server -ArgumentList "-run" -WindowStyle Hidden -ErrorAction SilentlyContinue',
+            '    Start-Sleep -Seconds 5',
+            '  }',
+            '  if (-not (Get-NetTCPConnection -LocalPort 6080 -State Listen -ErrorAction SilentlyContinue)) {',
+            '    Start-Process -FilePath $py -ArgumentList @("-m", "websockify", "0.0.0.0:6080", "127.0.0.1:5900", "--web=C:\novnc") -WindowStyle Hidden -ErrorAction SilentlyContinue',
+            '    Start-Sleep -Seconds 5',
+            '  }',
+            '  Start-Sleep -Seconds 10',
+            '}'
           )
-          [System.IO.File]::WriteAllText('C:\cf_flags.txt', $env:CF_TUNNEL_FLAGS + "`r`n", $utf8)
-          $guard = $guard | ForEach-Object { $_ -replace '__VNC_PORT__', $env:VNC_ACTIVE_PORT -replace '__NOVNC_PORT__', $env:NOVNC_PORT -replace '__WEB_PORT__', $env:WEB_PORT -replace '__NOVNC_DIR__', $env:NOVNC_DIR -replace '__PY_EXE__', $py -replace '__TVNSERVER__', (Join-Path $env:TIGHTVNC_ROOT 'tvnserver.exe') }
-          [System.IO.File]::WriteAllText('C:\vncguard.ps1', (($guard -join "`r`n") + "`r`n"), $utf8)
-          Write-Host ('GUARD_WRITTEN_BYTES=' + (Get-Item -LiteralPath 'C:\vncguard.ps1').Length)
-          Get-Content -LiteralPath 'C:\relay.bat'
-          Get-Content -LiteralPath 'C:\tunnel_web.bat'
-          Get-Content -LiteralPath 'C:\tunnel_novnc.bat'
+          Set-Content -LiteralPath 'C:\vncguard.ps1' -Value $guard -Encoding ASCII
 
-      - name: Start the stack and prove the loopback round trip
+          $webBat = @(
+            '@echo off',
+            ('"' + $env:CF_EXE + '" tunnel --url http://127.0.0.1:' + $env:WEB_PORT + ' --protocol http2 --edge-ip-version 4 --no-autoupdate > "' + $env:CF_LOG_WEB + '" 2>&1')
+          )
+          Set-Content -LiteralPath 'C:\tunnel_web.bat' -Value $webBat -Encoding ASCII
+
+      - name: Start guard and tunnels
         run: |
           $ErrorActionPreference = 'Continue'
-          $ProgressPreference = 'SilentlyContinue'
+          Start-Process -FilePath 'C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe' -ArgumentList '-NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File C:\vncguard.ps1' -WindowStyle Hidden
+          Start-Process -FilePath 'C:\tunnel_web.bat' -WindowStyle Hidden
+          Start-Sleep -Seconds 8
 
-          $py = $env:PY_EXE
-          if (Get-NetTCPConnection -LocalPort ([int]$env:NOVNC_PORT) -State Listen -ErrorAction SilentlyContinue) {
-              Get-Process -Name python -ErrorAction SilentlyContinue | Where-Object { $_.Id -ne $PID } | ForEach-Object { Write-Host ('BRIDGE_EXISTING_PID=' + $_.Id) }
-              Write-Host 'BRIDGE_REUSED=True'
-          }
-          else {
-              $bridge = Start-Process -FilePath $py -ArgumentList @('-m', 'websockify', '--web', $env:NOVNC_DIR, $env:NOVNC_PORT, ('127.0.0.1:' + $env:VNC_ACTIVE_PORT)) -PassThru -RedirectStandardOutput 'C:\novnc_bridge.out.log' -RedirectStandardError 'C:\novnc_bridge.err.log'
-              Write-Host ('BRIDGE_PID=' + $bridge.Id + ' SESSION=' + $bridge.SessionId)
-          }
-          $relay = Start-Process -FilePath 'C:\relay.bat' -PassThru -ErrorAction SilentlyContinue
-          Write-Host ('RELAY_PID=' + $(if ($relay) { $relay.Id } else { 0 }))
-          $relayMeta = ''
-          for ($i = 0; $i -lt 15; $i++) {
-              Start-Sleep -Seconds 2
-              try {
-                  $probeMeta = Invoke-RestMethod ('http://127.0.0.1:' + $env:WEB_PORT + '/meta?k=' + [uri]::EscapeDataString($env:VNC_PASSWORD)) -TimeoutSec 10
-                  $relayMeta = ('vnc=' + $probeMeta.vnc + ' reason=' + $probeMeta.vnc_reason)
-                  if ($probeMeta.vnc -eq 'connected') { break }
-              }
-              catch { }
-          }
-          Write-Host ('RELAY_VNC_STATE=' + $relayMeta)
-          $tunnels = @()
-          foreach ($tunnelBatch in 'C:\tunnel_web.bat', 'C:\tunnel_novnc.bat') {
-              Start-Process -FilePath $tunnelBatch -ErrorAction SilentlyContinue
-              Write-Host ('TUNNEL_LAUNCHED=' + $tunnelBatch)
-          }
-          Start-Process -FilePath 'C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe' -ArgumentList '-NoProfile -ExecutionPolicy Bypass -File C:\vncguard.ps1' -ErrorAction SilentlyContinue
-          Write-Host 'GUARD_LAUNCHED=True'
-
-          $key = [uri]::EscapeDataString($env:VNC_PASSWORD)
-          $base = 'http://127.0.0.1:' + $env:WEB_PORT
-          $proof = 0
-          $bytes = 0
-          $metaJson = ''
-          for ($i = 0; $i -lt 60; $i++) {
-              Start-Sleep -Seconds 2
-              try {
-                  $meta = Invoke-RestMethod ($base + '/meta?k=' + $key) -TimeoutSec 15
-                  $metaJson = ($meta | ConvertTo-Json -Compress -Depth 4)
-                  if ($i % 5 -eq 0) { Write-Host ('RELAY_META=' + $metaJson) }
-                  if ($meta.captures -gt 0) {
-                      $frame = Invoke-WebRequest ($base + '/full?k=' + $key) -UseBasicParsing -TimeoutSec 25
-                      $proof = [int]$frame.StatusCode
-                      $bytes = $frame.RawContentLength
-                      if ($proof -eq 200 -and $bytes -gt 1000) { break }
-                  }
-              }
-              catch { if ($i % 10 -eq 0) { Write-Host ('RELAY_RETRY ' + $_.Exception.Message) } }
-          }
-          Write-Host ('RELAY_PROOF_HTTP=' + $proof + ' RELAY_PROOF_BYTES=' + $bytes)
-          if ($proof -ne 200 -or $bytes -lt 1000) {
-              Get-Content -LiteralPath $env:RELAY_LOG -Tail 25 -ErrorAction SilentlyContinue
-              Get-Content -LiteralPath 'C:\relay.err.log' -Tail 25 -ErrorAction SilentlyContinue
-              Get-Content -LiteralPath $env:GUARD_LOG -Tail 10 -ErrorAction SilentlyContinue
-              throw ('RELAY_PROOF_FAILED http=' + $proof + ' bytes=' + $bytes)
-          }
-          $listeners = Get-NetTCPConnection -State Listen -ErrorAction SilentlyContinue
-          foreach ($port in ([int]$env:VNC_ACTIVE_PORT), ([int]$env:VNC_PORT), ([int]$env:NOVNC_PORT), ([int]$env:WEB_PORT)) {
-              $hit = $listeners | Where-Object { $_.LocalPort -eq $port } | Select-Object -First 1
-              Write-Host ('STACK_LISTEN port={0} bound={1} pid={2} session={3}' -f $port, [bool]$hit, $(if ($hit) { $hit.OwningProcess } else { 0 }), $(if ($hit) { (Get-Process -Id $hit.OwningProcess -ErrorAction SilentlyContinue).SessionId } else { '' }))
-          }
-          Write-Host ('STACK_SESSION_ID=' + (Get-Process -Id $PID).SessionId)
-          $relayOwner = (Get-NetTCPConnection -LocalPort ([int]$env:WEB_PORT) -State Listen -ErrorAction SilentlyContinue | Select-Object -First 1).OwningProcess
-          Write-Host ('CAPTURE_PID=' + $relayOwner + ' SESSION=' + $(if ($relayOwner) { (Get-Process -Id $relayOwner -ErrorAction SilentlyContinue).SessionId } else { '' }))
-          $interactive = Get-Process -Name explorer -ErrorAction SilentlyContinue | Where-Object { $_.SessionId -ne 0 } | Select-Object -First 1
-          $interactiveSession = if ($interactive) { [int]$interactive.SessionId } else { [int](Get-Process -Id $PID).SessionId }
-          Write-Host ('INTERACTIVE_SESSION=' + $interactiveSession)
-          "INTERACTIVE_SESSION=$interactiveSession" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
-          Write-Host ('BRIDGE_LOG_TAIL=' + ((Get-Content -LiteralPath 'C:\novnc_bridge.err.log' -Tail 5 -ErrorAction SilentlyContinue) -join ' | '))
-          Write-Host ('STACK_READY_MARKER=STACK_READY')
-          "STACK_READY=1" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
-
-      - name: Resolve the quick tunnels and validate at the edge
+      - name: Resolve public endpoints
         run: |
           $ErrorActionPreference = 'Continue'
-          $ProgressPreference = 'SilentlyContinue'
-
           function Get-TunnelUrl {
-              param([string]$LogPath, [int]$Attempts = 90)
-              for ($i = 0; $i -lt $Attempts; $i++) {
-                  if (Test-Path -LiteralPath $LogPath) {
-                      $raw = Get-Content -LiteralPath $LogPath -Raw -ErrorAction SilentlyContinue
-                      if ($raw -match 'https://[a-z0-9-]+\.trycloudflare\.com') { return $Matches[0] }
-                  }
-                  Start-Sleep -Seconds 2
+            param([string]$LogPath, [int]$Attempts = 90)
+            for ($i = 0; $i -lt $Attempts; $i++) {
+              if (Test-Path -LiteralPath $LogPath) {
+                $log = Get-Content -LiteralPath $LogPath -Raw -ErrorAction SilentlyContinue
+                if ($log -match 'https://[a-z0-9-]+\.trycloudflare\.com') { return $Matches[0] }
               }
-              return $null
+              Start-Sleep -Seconds 2
+            }
+            return $null
           }
-          $webUrl = Get-TunnelUrl -LogPath $env:CF_LOG_WEB -Attempts 60
-          $novncUrl = Get-TunnelUrl -LogPath $env:CF_LOG_NOVNC -Attempts 30
-          $webHost = if ($webUrl) { ($webUrl -replace '^https?://', '') } else { '' }
-          $novncHost = if ($novncUrl) { ($novncUrl -replace '^https?://', '') } else { '' }
-          Write-Host ('WEB_HOST=' + $webHost)
-          Write-Host ('NOVNC_HOST=' + $novncHost)
-          if (-not $webHost) {
-              Write-Host 'TUNNEL_URL_RETRY=1'
-              Start-Process -FilePath 'C:\tunnel_web.bat' -ErrorAction SilentlyContinue
-              $webUrl = Get-TunnelUrl -LogPath $env:CF_LOG_WEB -Attempts 45
-              $webHost = if ($webUrl) { ($webUrl -replace '^https?://', '') } else { '' }
-          }
-          if (-not $webHost) {
-              Get-Content -LiteralPath $env:CF_LOG_WEB -Tail 40 -ErrorAction SilentlyContinue
-              Get-Content -LiteralPath $env:CF_ERR_WEB -Tail 40 -ErrorAction SilentlyContinue
-              throw 'TUNNEL_URL_UNRESOLVED'
-          }
-          $key = [uri]::EscapeDataString($env:VNC_PASSWORD)
-          $status = 0
-          $edgeBytes = 0
-          for ($i = 0; $i -lt 30; $i++) {
-              try {
-                  $frame = Invoke-WebRequest ('https://' + $webHost + '/full?k=' + $key) -UseBasicParsing -TimeoutSec 30
-                  $status = [int]$frame.StatusCode
-                  $edgeBytes = $frame.RawContentLength
-                  if ($status -eq 200 -and $edgeBytes -gt 1000) { break }
-              }
-              catch { $status = 0; Write-Host ('EDGE_RETRY ' + $_.Exception.Message) }
-              Start-Sleep -Seconds 5
-          }
-          Write-Host ('PUBLIC_HTTP=' + $status + ' EDGE_BYTES=' + $edgeBytes)
-          $novncState = 'absent'
-          if ($novncHost) {
-              try { $novncState = [string](Invoke-WebRequest ('https://' + $novncHost + '/vnc.html') -UseBasicParsing -TimeoutSec 25).StatusCode }
-              catch { $novncState = 'error' }
-          }
-          Write-Host ('NOVNC_EDGE=' + $novncState)
-          $wsEdge = 'absent'
-          if ($novncHost) {
-              $resolved = $false
-              for ($i = 0; $i -lt 10; $i++) {
-                  try { [void][System.Net.Dns]::GetHostAddresses($novncHost); $resolved = $true; break } catch { Start-Sleep -Seconds 3 }
-              }
-              Write-Host ('NOVNC_DNS_RESOLVED=' + $resolved)
-              if ($resolved) {
-                  $out = & 'C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe' -NoProfile -ExecutionPolicy Bypass -File $env:PROBE_PS -Mode ws -WsUrl ('wss://' + $novncHost + '/') 2>&1
-                  $line = ($out | Where-Object { $_ -match 'WS_RFB_BANNER=' } | Select-Object -First 1)
-                  if ($line) { $wsEdge = ([string]$line).Trim() }
-                  Write-Host ('NOVNC_WS_EDGE=' + $wsEdge)
-              }
-          }
-          foreach ($pair in @(@{ K = 'WEB_HOST'; V = $webHost }, @{ K = 'NOVNC_HOST'; V = $novncHost }, @{ K = 'PUBLIC_HTTP'; V = $status }, @{ K = 'NOVNC_EDGE'; V = $novncState }, @{ K = 'NOVNC_WS_EDGE'; V = $wsEdge })) {
-              ($pair.K + '=' + $pair.V) | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
-          }
-          if ($status -ne 200) { throw ('EDGE_PROOF_FAILED http=' + $status) }
+          $webUrl = Get-TunnelUrl -LogPath $env:CF_LOG_WEB
+          $webHost = if ($webUrl) { $webUrl -replace '^https?://', '' } else { '' }
+          $browser = if ($webHost) { 'https://' + $webHost + '/vnc.html?host=' + $webHost + '&port=443&path=websocket&encrypt=1&autoconnect=1&resize=scale' } else { '' }
+          Write-Host "BROWSER_URL=$browser"
 
-      - name: Publish the connection parameters
+      - name: Keep session open
         run: |
-          $ErrorActionPreference = 'Continue'
-          $ProgressPreference = 'SilentlyContinue'
+          $keep = [int]$env:KEEP_ALIVE
+          if ($keep -le 0) { $keep = 340 }
+          Start-Sleep -Seconds ($keep * 60)
 
-          $key = [uri]::EscapeDataString($env:VNC_PASSWORD)
-          $desktopUrl = 'https://' + $env:WEB_HOST + '/?k=' + $key
-          $novncPage = if ($env:NOVNC_HOST -and $env:NOVNC_EDGE -eq '200') { 'https://' + $env:NOVNC_HOST + '/vnc.html?autoconnect=1&resize=remote&password=' + $key } else { '' }
-          @(
-              'DESKTOP_URL=' + $desktopUrl,
-              'ACCESS_KEY=' + $env:VNC_PASSWORD,
-              'NOVNC_URL=' + $novncPage,
-              'NOVNC_WS_EDGE=' + $env:NOVNC_WS_EDGE,
-              'PUBLIC_HTTP=' + $env:PUBLIC_HTTP,
-              'VNC_AUTH=' + $env:VNC_AUTH,
-              'VNC_ACTIVE_PORT=' + $env:VNC_ACTIVE_PORT,
-              'INTERACTIVE_SESSION=' + $env:INTERACTIVE_SESSION,
-              'BRIDGE_WS=' + $env:BRIDGE_WS
-          ) | Set-Content -LiteralPath $env:URL_FILE -Encoding ASCII
-          Get-Content -LiteralPath $env:URL_FILE
-          Write-Host ('OPEN_THIS_URL=' + $desktopUrl)
-          Write-Host ('NOVNC_URL=' + $novncPage)
-          if ($env:GITHUB_STEP_SUMMARY) {
-              @(
-                  '# Windows Server 2025 interactive desktop',
-                  '',
-                  '- Screenshot console: ' + $desktopUrl,
-                  '- noVNC client: ' + $(if ($novncPage) { $novncPage } else { 'edge websocket unavailable, use the console URL' }),
-                  '- Access key: ' + $env:VNC_PASSWORD,
-                  '- RFB auth proven: ' + $env:VNC_AUTH,
-                  '- Bridge websocket: ' + $env:BRIDGE_WS,
-                  '- Edge probe: HTTP ' + $env:PUBLIC_HTTP,
-                  '- Edge console: https://' + $env:WEB_HOST + '/?k=' + $key
-                  '- noVNC page: ' + $(if ($novncPage) { $novncPage } else { 'n/a' })
-              ) | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8
-          }
-
-      - name: Keep the session alive for the requested window
-        run: |
-          $ErrorActionPreference = 'Continue'
-          $ProgressPreference = 'SilentlyContinue'
-
-          $key = [uri]::EscapeDataString($env:VNC_PASSWORD)
-          $keep = 0
-          if (-not [int]::TryParse($env:KEEP_ALIVE, [ref]$keep)) { $keep = 30 }
-          if ($keep -le 0) { $keep = 330 }
-          $deadline = (Get-Date).AddMinutes($keep)
-          Write-Host ('KEEPALIVE_START minutes=' + $keep + ' deadline=' + $deadline.ToString('o'))
-          $tick = 0
-          while ((Get-Date) -lt $deadline) {
-              $rfb = Get-NetTCPConnection -LocalPort ([int]$env:VNC_ACTIVE_PORT) -State Listen -ErrorAction SilentlyContinue
-              if (-not $rfb) {
-                  Start-Service -Name tvnserver -ErrorAction SilentlyContinue
-                  if (-not (Get-Process -Name tvnserver -ErrorAction SilentlyContinue)) { Start-Process -FilePath (Join-Path $env:TIGHTVNC_ROOT 'tvnserver.exe') -ArgumentList '-run' -ErrorAction SilentlyContinue }
-                  Write-Host 'RFB_RESTARTED=True'
-              }
-              $bridge = Get-NetTCPConnection -LocalPort ([int]$env:NOVNC_PORT) -State Listen -ErrorAction SilentlyContinue
-              if (-not $bridge) {
-                  Start-Process -FilePath $env:PY_EXE -ArgumentList @('-m', 'websockify', '--web', $env:NOVNC_DIR, $env:NOVNC_PORT, ('127.0.0.1:' + $env:VNC_ACTIVE_PORT)) -ErrorAction SilentlyContinue
-                  Write-Host 'BRIDGE_RESTARTED=True'
-              }
-              $cfOk = @(Get-Process -Name cloudflared -ErrorAction SilentlyContinue | Where-Object { $_.SessionId -eq ([int]$env:INTERACTIVE_SESSION) }).Count
-              if ($cfOk -lt 2) { Write-Host ('TUNNEL_SESSION_CHECK count=' + $cfOk + ' session=' + $env:INTERACTIVE_SESSION) }
-              $relay = Get-NetTCPConnection -LocalPort ([int]$env:WEB_PORT) -State Listen -ErrorAction SilentlyContinue
-              if (-not $relay) { Start-Process -FilePath 'C:\relay.bat' -ErrorAction SilentlyContinue; Write-Host 'RELAY_RESTARTED=True' }
-              $cf = @(Get-Process -Name cloudflared -ErrorAction SilentlyContinue)
-              if ($cf.Count -lt 2) {
-                  Start-Process -FilePath 'C:\tunnel_web.bat' -ErrorAction SilentlyContinue
-                  Start-Process -FilePath 'C:\tunnel_novnc.bat' -ErrorAction SilentlyContinue
-                  Write-Host ('TUNNEL_RESTARTED cloudflared=' + $cf.Count)
-              }
-              if ($tick % 10 -eq 0) {
-                  $vncProbe = & 'C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe' -NoProfile -ExecutionPolicy Bypass -File $env:PROBE_PS -Mode rfb -Port ([int]$env:VNC_ACTIVE_PORT) -BlobHex $env:VNC_PASSWORD_BLOB_HEX 2>&1
-                  if ($LASTEXITCODE -eq 0) { Write-Host ('VNC_AUTH_RECHECK=OK') } else { Write-Host ('VNC_AUTH_REGRESSED ' + ($vncProbe | Select-Object -Last 1)) }
-              }
-              if ($tick % 2 -eq 0) {
-                  try {
-                      $meta = Invoke-RestMethod ('http://127.0.0.1:' + $env:WEB_PORT + '/meta?k=' + $key) -TimeoutSec 20
-                      Write-Host ('HEALTH captures={0} seq={1} size={2}x{3} vnc={4} input={5} err={6}' -f $meta.captures, $meta.seq, $meta.w, $meta.h, $meta.vnc, $meta.input, $meta.error)
-                  }
-                  catch { Write-Host ('HEALTH_PROBE_FAILED ' + $_.Exception.Message) }
-                  $raw = Get-Content -LiteralPath $env:CF_LOG_WEB -Raw -ErrorAction SilentlyContinue
-                  $current = if ($raw -match 'https://[a-z0-9-]+\.trycloudflare\.com') { $Matches[0] } else { '' }
-                  if ($current -and $current -ne ('https://' + $env:WEB_HOST)) {
-                      Write-Host ('TUNNEL_URL_CHANGED=' + $current + '/?k=' + $key)
-                      $env:WEB_HOST = $current -replace '^https?://', ''
-                      ('WEB_HOST=' + $env:WEB_HOST) | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
-                  }
-                  Write-Host ('{0} rfb={1} bridge={2} relay={3} url={4}' -f (Get-Date -Format 'HH:mm:ss'), [bool]$rfb, [bool]$bridge, [bool]$relay, $current)
-              }
-              $tick++
-              Start-Sleep -Seconds 60
-          }
-          Write-Host ('KEEPALIVE_END ticks=' + $tick)
-
-      - name: Teardown and log collection
+      - name: Teardown and Secure Wipe
         if: always()
         run: |
-          $ErrorActionPreference = 'Continue'
-          $ProgressPreference = 'SilentlyContinue'
+          $ErrorActionPreference = 'SilentlyContinue'
+          # إيقاف العمليات والخدمات المرتبطة
+          Get-Process -Name cloudflared, python, tvnserver, winvnc4 | Stop-Process -Force
+          Get-Service -Name 'Cloudflared' | Stop-Service -Force
 
-          if (Test-Path -LiteralPath $env:URL_FILE) { Get-Content -LiteralPath $env:URL_FILE }
-          foreach ($log in $env:RELAY_LOG, 'C:\relay.err.log', 'C:\novnc_bridge.err.log', $env:CF_ERR_WEB, $env:CF_ERR_NOVNC, $env:GUARD_LOG) {
-              if (Test-Path -LiteralPath $log) {
-                  Write-Host ('--- tail ' + $log + ' ---')
-                  Get-Content -LiteralPath $log -Tail 15 -ErrorAction SilentlyContinue
+          # مسح شامل وحذف نهائي لأي ملفات مؤقتة، سجلات، أو أدوات تم تنزيلها لضمان النظافة التامة
+          $cleanupPaths = @(
+              'C:\telemetry',
+              'C:\novnc',
+              'C:\novnc.zip',
+              'C:\python312.zip',
+              'C:\winvnc-setup.exe',
+              'C:\cloudflared-amd64.exe',
+              'C:\vncguard.ps1',
+              'C:\tunnel_web.bat',
+              'C:\tunnel_vnc.bat',
+              'C:\desktop_urls.txt',
+              'C:\cf_web.log',
+              'C:\cf_web.err.log',
+              'C:\websockify.log',
+              'C:\vncguard.log'
+          )
+          foreach ($path in $cleanupPaths) {
+              if (Test-Path -LiteralPath $path) {
+                  Remove-Item -LiteralPath $path -Recurse -Force -ErrorAction SilentlyContinue
+                  Write-Host "CLEANED: $path"
               }
           }
-          Get-Process -Name cloudflared, python, tvnserver, websockify -ErrorAction SilentlyContinue | Select-Object Name, Id, SessionId | Format-Table -AutoSize
-          Get-Process -Name cloudflared, tvnserver -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
-          Get-Process -Name python -ErrorAction SilentlyContinue | Where-Object { $_.Path -like '*hostedtoolcache*' } | Stop-Process -Force -ErrorAction SilentlyContinue
-          Get-Service -Name 'tvnserver' -ErrorAction SilentlyContinue | Stop-Service -Force -ErrorAction SilentlyContinue
-          Remove-Item -LiteralPath $env:CF_FLAGS_FILE -Force -ErrorAction SilentlyContinue
-          Unregister-ScheduledTask -TaskName 'DesktopCaptureSession2' -Confirm:$false -ErrorAction SilentlyContinue
-          Write-Host 'TEARDOWN_DONE=True'
+          Write-Host "Secured and wiped temporary artifacts successfully."
