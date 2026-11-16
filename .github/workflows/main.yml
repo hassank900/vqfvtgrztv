@@ -1,4 +1,4 @@
-Name: windows-desktop-vnc
+name: windows-desktop-vnc
 
 on:
   workflow_dispatch:
